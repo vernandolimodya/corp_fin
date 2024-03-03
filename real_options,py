@@ -1,0 +1,141 @@
+import numpy as np
+from scipy.stats import norm
+
+class RealOption:
+
+    def __init__(self, r_f, pvwf, price, factor, T, sigma=None, u=None, d=None, exp_or_contr='exp', time_step=1, wacc=None):
+
+        """
+        sigma : volatility
+        r_f : risk-free rate
+        npwf : present value without flexibility
+        price : expansion or contraction price
+        T : Expiration Time
+        factor : expansion or contraction factor
+        """
+        self.sigma = sigma
+        self.r_f = r_f
+        self.pvwf = pvwf
+        self.price = price
+        self.T = T
+        self.factor = factor
+
+        """
+        u : multplicative upward movement in the project value
+        """
+        if u != None:
+            self.u = u
+        elif u == None and sigma != None:
+            self.u = np.exp(self.sigma*np.sqrt(time_step))
+        else:
+            self.u = None
+           
+        """
+        d : multiplicative downward movement in the project value
+        """
+        if d != None:
+            self.d = d
+        elif d == None and sigma != None:
+            self.d = np.exp(-self.sigma*np.sqrt(time_step))
+        else:
+            self.d = None
+        
+        """
+        WACC : weighted average cost of capital
+        """
+        self.wacc = wacc
+        """
+        q : objective probability
+        """
+        if self.wacc != None and self.u != None and self.d != None:
+            self.q = (1 + self.wacc - self.d)/( self.u - self.d )
+
+        """
+        p : risk-neutral probability
+        """
+        if self.u != None and self.d != None:
+            self.p = (1 + self.r_f - self.d)/( self.u - self.d )
+
+
+        """
+        expansion or contraction option
+        """
+        self.exp_or_contr = exp_or_contr
+
+        """
+        value
+        """
+        self.dta_value = None
+        self.roa_value = None
+
+    def dta(self):
+        print("Using DTA ... \n")
+        
+        if not isinstance(self.T, int):
+            raise TypeError("Expiration Time (T) must be an integer.")
+
+        self.binomial_tree = np.zeros((self.T + 1, self.T + 1))
+
+        for j in range(self.T + 1):
+            if self.exp_or_contr == 'exp':
+                self.binomial_tree[j, self.T] = np.max([np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf,
+                                np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf * (1 + self.factor) - self.price])
+            else:
+                self.binomial_tree[j, self.T] = np.max([np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf,
+                                np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf * (1 - self.factor) + self.price])
+
+        for j in [ self.T - 1 - x for x in range(self.T)]:
+            for i in range(j + 1):
+                european_value = self.q * self.binomial_tree[i, j + 1] + (1 - self.q) * self.binomial_tree[i + 1, j + 1]
+                european_value /= 1 + self.wacc
+
+                if self.exp_or_contr == 'exp':
+                    self.binomial_tree[i, j] = np.max([european_value, 
+                            np.power(self.u, j - i) * np.power(self.d, i) * self.pvwf * (1 + self.factor) - self.price])
+                else:
+                    self.binomial_tree[i, j] = np.max([european_value, 
+                            np.power(self.u, j - i) * np.power(self.d, i) * self.pvwf * (1 - self.factor) + self.price])
+
+
+        self.dta_value = self.binomial_tree[0,0]
+
+        return self.binomial_tree
+    
+    def roa(self):
+        print("Using ROA ... \n")
+        
+        if not isinstance(self.T, int):
+            raise TypeError("Expiration Time (T) must be an integer.")
+
+        self.binomial_tree = np.zeros((self.T + 1, self.T + 1))
+
+        for j in range(self.T + 1):
+            if self.exp_or_contr == 'exp':
+                self.binomial_tree[j, self.T] = np.max([np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf,
+                                np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf * (1 + self.factor) - self.price])
+            else:
+                self.binomial_tree[j, self.T] = np.max([np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf,
+                                np.power(self.u, self.T - j) * np.power(self.d, j) * self.pvwf * (1 - self.factor) + self.price])
+
+        for j in [ self.T - 1 - x for x in range(self.T)]:
+            for i in range(j + 1):
+                european_value = self.p * self.binomial_tree[i, j + 1] + (1 - self.p) * self.binomial_tree[i + 1, j + 1]
+                european_value /= 1 + self.r_f
+
+                if self.exp_or_contr == 'exp':
+                    self.binomial_tree[i, j] = np.max([european_value, 
+                            np.power(self.u, j - i) * np.power(self.d, i) * self.pvwf * (1 + self.factor) - self.price])
+                else:
+                    self.binomial_tree[i, j] = np.max([european_value, 
+                            np.power(self.u, j - i) * np.power(self.d, i) * self.pvwf * (1 - self.factor) + self.price])
+
+
+        self.roa_value = self.binomial_tree[0,0]
+
+        return self.binomial_tree
+
+
+if __name__ == '__main__':
+    roa_proj = RealOption(r_f=0.05, pvwf=30, price=5, factor=0.2, T=2, sigma=0.15, exp_or_contr='exp', wacc=0.12)
+    print(roa_proj.dta())
+    print(roa_proj.roa())
